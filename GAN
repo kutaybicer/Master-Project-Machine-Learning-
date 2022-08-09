@@ -13,14 +13,46 @@ import matplotlib
 import matplotlib.pyplot as plt 
 import tensorflow as tf
 import cv2
+from google.cloud import storage
+from PIL import Image
 
 
+os.environ['GOOGLE_APPlICATION_CREDENTIALS'] = 'C:\Project\project-358014-1ab403deb150.json'
 
+storage_client = storage.Client()
 
+# bucket_name = 'ganimages'
+# bucket = storage_client.bucket(bucket_name)
+# bucket.create(location='EU')
+
+def upload_cloud(blob_name, path, bucket_name):
+    try:
+        bucket =storage_client.get_bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.upload_from_filename(path)
+        return True
+    except Exception as e:
+        print(e)
+        return False
+        
+ def download_cloud(blob_name, path, bucket_name):
+    try:
+        bucket =storage_client.get_bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        with open(path,'wb') as f:
+            storage_client.download_blob_to_file(blob,f)
+        return True
+    except Exception as e:
+        print(e)
+        return False
+        
+        
+        
+ 
 ImgLocation="C:/Project/data3333/"
 
 
-CATEGORIES = set(["malignant"])
+CATEGORIES = set(["malignant_all"])
 
 
 ImagePaths=[]
@@ -37,9 +69,7 @@ for img in ImagePaths:
     data_lowres.append(image_lowres)
     
 
-data_lowres = np.array(data_lowres, dtype="float") / 255.0
-
-print("Shape of data_lowres: ", data_lowres.shape)
+data_lowres = np.array(data_lowres, dtype="float32") / 255.0
 
 
 
@@ -73,6 +103,8 @@ data=scaler.transform(data)
 data=data.reshape(data_lowres.shape[0], 64, 64, 3)
 print("Shape of the scaled array: ", data.shape)
 
+print("Shape of data_lowres: ", data_lowres.shape)
+
 
 
 def generator(latent_dim):
@@ -83,7 +115,7 @@ def generator(latent_dim):
     model.add(Dense(n_nodes, input_dim=latent_dim, name='Generator-Hidden-Layer-1'))
     model.add(Reshape((8, 8, 128), name='Generator-Hidden-Layer-Reshape-1'))
     
-   
+    
     model.add(Conv2DTranspose(filters=128, kernel_size=(4,4), strides=(2,2), padding='same', name='Generator-Hidden-Layer-2'))
     model.add(ReLU(name='Generator-Hidden-Layer-Activation-2'))
                               
@@ -95,7 +127,7 @@ def generator(latent_dim):
     model.add(Conv2DTranspose(filters=512, kernel_size=(4,4), strides=(2,2), padding='same', name='Generator-Hidden-Layer-4'))
     model.add(ReLU(name='Generator-Hidden-Layer-Activation-4'))
     
-   
+    
     model.add(Conv2D(filters=3, kernel_size=(5,5), activation='tanh', padding='same', name='Generator-Output-Layer'))
     return model
 
@@ -105,22 +137,23 @@ gen_model = generator(latent_dim)
 
 
 
+
 def discriminator(in_shape=(64,64,3)):
     model = Sequential(name="Discriminator") # Model
     
-
+    
     model.add(Conv2D(filters=64, kernel_size=(4,4), strides=(2, 2), padding='same', input_shape=in_shape, name='Discriminator-Hidden-Layer-1'))
     model.add(LeakyReLU(alpha=0.2, name='Discriminator-Hidden-Layer-Activation-1'))
     
- 
+    
     model.add(Conv2D(filters=128, kernel_size=(4,4), strides=(2, 2), padding='same', input_shape=in_shape, name='Discriminator-Hidden-Layer-2'))
     model.add(LeakyReLU(alpha=0.2, name='Discriminator-Hidden-Layer-Activation-2'))
     
-   
+    
     model.add(Conv2D(filters=128, kernel_size=(4,4), strides=(2, 2), padding='same', input_shape=in_shape, name='Discriminator-Hidden-Layer-3'))
     model.add(LeakyReLU(alpha=0.2, name='Discriminator-Hidden-Layer-Activation-3'))
     
-   
+    
     model.add(Flatten(name='Discriminator-Flatten-Layer')) # Flatten the shape
     model.add(Dropout(0.3, name='Discriminator-Flatten-Layer-Dropout')) # Randomly drop some connections for better generalization
     model.add(Dense(1, activation='sigmoid', name='Discriminator-Output-Layer')) # Output Layer
@@ -139,7 +172,7 @@ def def_gan(generator, discriminator):
     
     discriminator.trainable = False
     
-   
+    
     model = Sequential(name="DCGAN") # GAN Model
     model.add(generator) # Add Generator
     model.add(discriminator) # Add Disriminator
@@ -156,56 +189,54 @@ gan_model = def_gan(gen_model, dis_model)
 
 def real_samples(n, dataset):
     
-
+   
     X = dataset[np.random.choice(dataset.shape[0], n, replace=True), :]
 
-
+   
     y = np.ones((n, 1))
     return X, y
     
     
 def latent_vector(latent_dim, n):
     
-
+    
     latent_input = np.random.randn(latent_dim * n)
     
-
+    
     latent_input = latent_input.reshape(n, latent_dim)
     return latent_input
   
     
 def fake_samples(generator, latent_dim, n):
     
-
+    
     latent_output = latent_vector(latent_dim, n)
     
-
+    
     X = generator.predict(latent_output)
     
-  
+   
     y = np.zeros((n, 1))
     return X, y    
-
-
-
-def performance_summary(generator, discriminator, dataset, latent_dim, n=50):
     
-
+def performance_summary(generator, discriminator, dataset, latent_dim, n=100):
+    
+   
     x_real, y_real = real_samples(n, dataset)
-
+    
     _, real_accuracy = discriminator.evaluate(x_real, y_real, verbose=0)
     
-
+   
     x_fake, y_fake = fake_samples(generator, latent_dim, n)
-
+    
     _, fake_accuracy = discriminator.evaluate(x_fake, y_fake, verbose=0)
     
-
+    
     print("*** Evaluation ***")
     print("Discriminator Accuracy on REAL images: ", real_accuracy)
     print("Discriminator Accuracy on FAKE (generated) images: ", fake_accuracy)
     
-
+    
     x_fake_inv_trans=x_fake.reshape(-1, 1)
     x_fake_inv_trans=scaler.inverse_transform(x_fake_inv_trans)
     x_fake_inv_trans=x_fake_inv_trans.reshape(n, 64, 64, 3)
@@ -218,18 +249,18 @@ def performance_summary(generator, discriminator, dataset, latent_dim, n=50):
             k=k+1
     plt.show() 
     
-    
-    
-def train(g_model, d_model, gan_model, dataset, latent_dim, n_epochs=4001, n_batch=32, n_eval=100):
+
+
+def train(g_model, d_model, gan_model, dataset, latent_dim, n_epochs=10001, n_batch=32, n_eval=500):
     
     
     half_batch = int(n_batch / 2)
     
-   
+    
     for i in range(n_epochs):
     
     
-       
+        
         x_real, y_real = real_samples(half_batch, dataset)
         
         x_fake, y_fake = fake_samples(g_model, latent_dim, half_batch)
@@ -238,24 +269,47 @@ def train(g_model, d_model, gan_model, dataset, latent_dim, n_epochs=4001, n_bat
         X, y = np.vstack((x_real, x_fake)), np.vstack((y_real, y_fake))
         discriminator_loss, _ = d_model.train_on_batch(X, y)
     
-   
+    
         
         x_gan = latent_vector(latent_dim, n_batch)
-        
-        
+                        
         y_gan = np.ones((n_batch, 1))
-        
-       
+                
         generator_loss = gan_model.train_on_batch(x_gan, y_gan)
         
-       
         if (i) % n_eval == 0:
             print("Epoch number: ", i)
             print("*** Training ***")
             print("Discriminator Loss ", discriminator_loss)
             print("Generator Loss: ", generator_loss)
-            performance_summary(g_model, d_model, dataset, latent_dim)    
-
-
-
+            performance_summary(g_model, d_model, dataset, latent_dim)
+            
+            
 train(gen_model, dis_model, gan_model, data, latent_dim)
+
+
+number=3000
+xfake, yfake = fake_samples(gen_model, 100, number)
+xfake_inv_trans=xfake.reshape(-1, 1)
+xfake_inv_trans=scaler.inverse_transform(xfake_inv_trans)
+xfake_inv_trans=xfake_inv_trans.reshape(number, 64, 64, 3)
+
+
+k=0
+
+for i in range(0,len(xfake_inv_trans)):
+    plt.imshow(xfake_inv_trans[k])
+    plt.imsave("C:\Project\generation\malignant\%d.png"%k, xfake_inv_trans[k])
+    k=k+1
+    
+# path = r'C:\Project\generated'
+# c=0
+# for c in range (0, 10):
+#     upload_cloud('%d'%c,os.path.join(path, '%d.png'%c), 'ganimages')
+
+
+
+# path = r'C:\Project\saved\synthetic'
+# a = 0
+# for a in range (0,10):
+#     download_cloud('%d'%a, os.path.join(path,'%d.png'%a),'ganimages')
