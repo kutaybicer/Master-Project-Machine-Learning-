@@ -141,7 +141,7 @@ loss = history.history['loss']
 val_loss = history.history['val_loss']
 epochs = range(1, len(loss) + 1)
 
-#accuracy plot
+
 plt.plot(epochs, accuracy, color='b', label='Training Accuracy')
 plt.plot(epochs, val_accuracy, color='r', label='Validation Accuracy')
 plt.title('Training and Validation Accuracy')
@@ -150,7 +150,8 @@ plt.xlabel('Epoch')
 plt.legend()
 
 plt.figure()
-#loss plot
+
+
 plt.plot(epochs, loss, color='g', label='Training Loss')
 plt.plot(epochs, val_loss, color='y', label='Validation Loss')
 plt.title('Training and Validation Loss')
@@ -161,35 +162,31 @@ plt.legend()
 plt.show()
 
 
-y_predict = model.predict(test_data)
+generated_data = tf.keras.utils.image_dataset_from_directory(
+    'C:/Project/saved',
+    labels="inferred",
+    label_mode='binary',
+    class_names= ['benign','malignant'],
+    batch_size=32,
+    image_size=(50, 50),
+    shuffle=True,
+    seed=1
+)
+
+y_predict = model.predict(generated_data)
 y_predict = np.argmax(y_predict,axis=1)
 y_predict
 
-labels = []
-for _,y in test_data:
-    labels.extend(list(y))
-np.array(labels)
-labels
-fpr, tpr, _ = roc_curve(labels, y_predict)
-roc_auc = auc(fpr, tpr)
-plt.figure()
-lw = 2
-plt.plot(fpr, tpr, color='darkorange',
-lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
-plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('Receiver operating characteristic example')
-plt.legend(loc="lower right")
-plt.show()
+Counter(y_predict)
 
-img_ = tf.keras.utils.load_img("C:/Project/data3/16896/1/16896_idx5_x301_y1051_class1.png", target_size=(50, 50))
-imag = tf.keras.utils.img_to_array(img_)
-imag = np.expand_dims(imag, axis=0)
-pred = model.predict(imag)
-pred = np.argmax(pred,axis=1)
-print(pred)
-print(label[pred[0]])
-plt.imshow(img_)
+
+
+c=0
+for c in range(0,10):
+    img_ = tf.keras.utils.load_img("C:/Project/saved/malignant/%d.png"%c, target_size=(50, 50))
+    imag = tf.keras.utils.img_to_array(img_)
+    imag = np.expand_dims(imag, axis=0)
+    pred = model.predict(imag)
+    pred = np.argmax(pred,axis=1)
+    print(pred)
+    plt.imshow(img_)
