@@ -1,0 +1,177 @@
+import numpy as np 
+import pandas as pd 
+import os
+import torch
+import torchvision
+from tensorflow import keras
+import tensorflow as tf
+from keras.layers import Dense,Dropout,Activation,Add,MaxPooling2D,Conv2D,Flatten,BatchNormalization
+from keras.models import Sequential
+from keras import layers
+from keras.preprocessing.image import ImageDataGenerator
+import numpy as np
+import matplotlib.pyplot as plt
+from keras.preprocessing import image
+import numpy as np
+import sklearn
+from sklearn.metrics import roc_curve,auc
+import sys
+import cv2
+from google.cloud import storage
+from PIL import Image
+from collections import Counter
+
+#Defining environment for cloud
+
+os.environ['GOOGLE_APPlICATION_CREDENTIALS'] = 'C:\Project\project-358014-1ab403deb150.json'
+
+#Creating storage client
+
+storage_client = storage.Client()
+
+#Upload function for cloud
+
+def upload_cloud(blob_name, path, bucket_name):
+    try:
+        bucket =storage_client.get_bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.upload_from_filename(path)
+        return True
+    except Exception as e:
+        print(e)
+        return False
+        
+#Download function for cloud
+
+def download_cloud(blob_name, path, bucket_name):
+    try:
+        bucket =storage_client.get_bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        with open(path,'wb') as f:
+            storage_client.download_blob_to_file(blob,f)
+        return True
+    except Exception as e:
+        print(e)
+        return False
+        
+#Downloading sythetic images from cloud
+path = r'C:/Project/data_all/train'
+a = 0
+for a in range (0,10):
+    download_cloud('%d'%a, os.path.join(path,'%d.png'%a),'ganimages')
+    
+##Loading test and train data
+
+train_data = tf.keras.utils.image_dataset_from_directory(
+    'C:/Project/data_all/train',
+    labels="inferred",
+    label_mode='binary',
+    class_names= ['benign','malignant'],
+    validation_split=0.2,
+    subset="training",
+    batch_size=32,
+    image_size=(50, 50),
+    shuffle=True,
+    seed=1
+)
+
+test_data = tf.keras.utils.image_dataset_from_directory(
+    'C:/Project/data_all/train',
+    labels="inferred",
+    label_mode='binary',
+    class_names= ['benign','malignant'],
+    validation_split=0.2,
+    subset="validation",
+    batch_size=32,
+    image_size=(50, 50),
+    shuffle=True,
+    seed=1
+)
+
+#CNN model
+
+model = Sequential([
+Conv2D(32,kernel_size= 3,padding='valid',activation='relu',input_shape=(50,50,3)),
+MaxPooling2D(pool_size=(2,2)),
+Conv2D(64,kernel_size= 3,padding='valid',activation='relu'),
+MaxPooling2D(pool_size=(2,2)),
+Dropout(0.3),
+Conv2D(128,kernel_size= 3,padding='valid',activation='relu'),
+MaxPooling2D(pool_size=(2,2)),
+Dropout(0.2),
+    
+Flatten(),
+    
+Dense(128,activation='relu'),
+Dropout(0.1),
+Dense(64,activation='relu'),
+Dense(2,activation='sigmoid')])
+
+model.compile(optimizer="adam", loss=keras.losses.SparseCategoricalCrossentropy(), metrics=['accuracy'])
+
+#definition of early stop conditions
+early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss',patience=5)
+
+#Training
+history=model.fit(train_data,
+    validation_data = test_data , 
+    callbacks=[early_stop],
+    epochs = 20)
+    
+#test results
+model.evaluate(test_data)
+
+#Plottings
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set()
+
+accuracy = history.history['accuracy']
+val_accuracy = history.history['val_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+epochs = range(1, len(loss) + 1)
+
+
+plt.plot(epochs, accuracy, color='b', label='Training Accuracy')
+plt.plot(epochs, val_accuracy, color='r', label='Validation Accuracy')
+plt.title('Training and Validation Accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Epoch')
+plt.legend()
+
+plt.figure()
+
+plt.plot(epochs, loss, color='g', label='Training Loss')
+plt.plot(epochs, val_loss, color='y', label='Validation Loss')
+plt.title('Training and Validation Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+
+plt.show()
+
+#Loading of malignant images for testing the quality of synthetic data produced with GAN
+
+# generated_data = tf.keras.utils.image_dataset_from_directory(
+#     'C:/Project/saved3',
+#     labels="inferred",
+#     label_mode='binary',
+#     class_names= ['benign','malignant'],
+#     batch_size=32,
+#     image_size=(50, 50),
+#     shuffle=True,
+#     seed=1
+# )
+
+#Testing of synthetic data generated with GAN
+
+np.set_printoptions(threshold=sys.maxsize)
+
+y_predict = model.predict(generated_data)
+y_predict = np.argmax(y_predict,axis=1)
+y_predict
+
+#Retrieve labels of tested images for testing sythetic image quality
+Counter(y_predict)
