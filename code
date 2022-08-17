@@ -15,44 +15,44 @@ from keras.preprocessing import image
 import numpy as np
 import sklearn
 from sklearn.metrics import roc_curve,auc
-
-
+import sys
+from collections import Counter
 
 tf.test.gpu_device_name()
+tf.test.is_gpu_available()
 
+#model for data augmentation
 
-# train_datagen = ImageDataGenerator(rescale=1/255,
-#                                    shear_range = 0.2,
-#                                    zoom_range = 0.2,
-#                                    vertical_flip =  True , 
-#                                    rotation_range=40,
-#                                    brightness_range = (0.5, 1.5),
-#                                    horizontal_flip = True)
-# train_data = train_datagen.flow_from_directory('C:/Project/data2/train',
-#                                                  target_size = (244, 244),
+train_datagen = ImageDataGenerator(rescale=1/255,
+                                   shear_range = 0.2,
+                                   zoom_range = 0.2,
+                                   vertical_flip =  True , 
+                                   rotation_range=40,
+                                   brightness_range = (0.5, 1.5),
+                                   horizontal_flip = True)
+
+#Saving synthetic images produced after data augmentation
+
+# i = 0
+# for batch in train_datagen.flow_from_directory('C:/Project/data_all_malignant',
+#                                                  target_size = (50, 50),
+#                                                  batch_size = 32,
 #                                                  class_mode='sparse',
 #                                                  shuffle=True,seed=1,
-#                                                  save_to_dir='C:/Project/augmentation',
-#                                                  save_prefix='hi',
-#                                                  save_format='png')
-# i = 0
-# for batch in train_datagen.flow_from_directory('C:/Project/deneme',
-#                                                  target_size = (244, 244),
-#                                                  batch_size = 32,
-#                                                  class_mode=None,
-#                                                  shuffle=True,seed=1,
-#                                                  save_to_dir='C:/Project/aug',
-#                                                  save_prefix='hi',
+#                                                  save_to_dir='C:/Project/augmentation_generation',
+#                                                  save_prefix='malignants',
 #                                                  save_format='png'):
-
 #     i += 1
-#     if i > 70: 
+#     if i > 1500: 
 #         break 
 
+
+#Loading test and train data
+
 train_data = tf.keras.utils.image_dataset_from_directory(
-    'C:/Project/data33/train',
+    'C:/Project/data_augmentation/train',
     labels="inferred",
-    label_mode="int",
+    label_mode='binary',
     class_names= ['benign','malignant'],
     validation_split=0.2,
     subset="training",
@@ -62,50 +62,22 @@ train_data = tf.keras.utils.image_dataset_from_directory(
     seed=1
 )
 
+
 test_data = tf.keras.utils.image_dataset_from_directory(
-'C:/Project/data33/train',
-labels="inferred",
-label_mode="int",
-class_names= ['benign','malignant'],
-validation_split=0.2,
-subset="validation",
-seed=1,
-image_size=(50, 50),
-batch_size=32,
-shuffle=True)
-
-#import test data
-# test_datagen = ImageDataGenerator(rescale = 1/255)
-# test_data = test_datagen.flow_from_directory("C:/Project/data2/test",
-#                                                            batch_size=32,
-#                                                            target_size=(150,150),
-#                                                            class_mode='binary',
-#                                                            shuffle=True,seed=1)
+    'C:/Project/data_augmentation/train',
+    labels="inferred",
+    label_mode='binary',
+    class_names= ['benign','malignant'],
+    validation_split=0.2,
+    subset="validation",
+    batch_size=32,
+    image_size=(50, 50),
+    shuffle=True,
+    seed=1
+)
 
 
-label =  {0:"benign",1:"malignant"}
-for i in label.keys() :
-    print(i,label[i])
-    
-    
-    model = Sequential([
-Conv2D(32,kernel_size= 3,padding='valid',activation='relu',input_shape=(50,50,3)),
-MaxPooling2D(pool_size=(2,2)),
-Conv2D(64,kernel_size= 3,padding='valid',activation='relu'),
-MaxPooling2D(pool_size=(2,2)),
-Dropout(0.3),
-Conv2D(128,kernel_size= 3,padding='valid',activation='relu'),
-MaxPooling2D(pool_size=(2,2)),
-Dropout(0.2),
-Flatten(),
-Dense(256,activation='relu'),
-Dropout(0.15),
-Dense(128,activation='relu'),
-Dense(2,activation='sigmoid')])
-
-model.compile(optimizer="adam", loss=keras.losses.SparseCategoricalCrossentropy(), metrics=['accuracy'])
-
-
+#CNN model
 model = Sequential([
 Conv2D(32,kernel_size= 3,padding='valid',activation='relu',input_shape=(50,50,3)),
 MaxPooling2D(pool_size=(2,2)),
@@ -115,23 +87,30 @@ Dropout(0.3),
 Conv2D(128,kernel_size= 3,padding='valid',activation='relu'),
 MaxPooling2D(pool_size=(2,2)),
 Dropout(0.2),
+    
 Flatten(),
-Dense(256,activation='relu'),
-Dropout(0.15),
+    
 Dense(128,activation='relu'),
+Dropout(0.1),
+Dense(64,activation='relu'),
 Dense(2,activation='sigmoid')])
 
 model.compile(optimizer="adam", loss=keras.losses.SparseCategoricalCrossentropy(), metrics=['accuracy'])
 
+#definition of early stop conditions
+early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss',patience=5)
 
+#Training
 history=model.fit(train_data,
     validation_data = test_data , 
     callbacks=[early_stop],
-    epochs = 30)
+    epochs = 20)
     
-    model.evaluate(test_data)
-    
-    import matplotlib.pyplot as plt
+#test results
+model.evaluate(test_data)
+
+#Plottings
+import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set()
 
@@ -151,7 +130,6 @@ plt.legend()
 
 plt.figure()
 
-
 plt.plot(epochs, loss, color='g', label='Training Loss')
 plt.plot(epochs, val_loss, color='y', label='Validation Loss')
 plt.title('Training and Validation Loss')
@@ -160,33 +138,3 @@ plt.ylabel('Loss')
 plt.legend()
 
 plt.show()
-
-
-generated_data = tf.keras.utils.image_dataset_from_directory(
-    'C:/Project/saved',
-    labels="inferred",
-    label_mode='binary',
-    class_names= ['benign','malignant'],
-    batch_size=32,
-    image_size=(50, 50),
-    shuffle=True,
-    seed=1
-)
-
-y_predict = model.predict(generated_data)
-y_predict = np.argmax(y_predict,axis=1)
-y_predict
-
-Counter(y_predict)
-
-
-
-c=0
-for c in range(0,10):
-    img_ = tf.keras.utils.load_img("C:/Project/saved/malignant/%d.png"%c, target_size=(50, 50))
-    imag = tf.keras.utils.img_to_array(img_)
-    imag = np.expand_dims(imag, axis=0)
-    pred = model.predict(imag)
-    pred = np.argmax(pred,axis=1)
-    print(pred)
-    plt.imshow(img_)
