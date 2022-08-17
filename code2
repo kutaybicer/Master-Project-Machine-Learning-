@@ -22,9 +22,13 @@ import torch.utils.data as data
 import torch.nn as nn
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+tf.test.gpu_device_name()
+tf.test.is_gpu_available()
+
+#image transform definition and parameter definitions
 
 batch_size = 32
-num_classes = 2
+number_class = 2
 learning_rate = 0.001
 
 transform = transforms.Compose([
@@ -32,15 +36,21 @@ transform = transforms.Compose([
      transforms.Resize((50,50))
 ])
 
-dataset = datasets.ImageFolder(root='C:/Project/data333/dataset', transform=transform)
+#Loading dataset
+
+dataset = datasets.ImageFolder(root='C:/Project/data_all_backup/train', transform=transform)
+
+#Splitting dataset into training and validation
 
 dataset_size = dataset.__len__()
-train_count = int(dataset_size * 0.8)
-val_count = dataset_size - train_count
-train_dataset, valid_dataset = data.random_split(dataset, [train_count, val_count])
+training_data_count = int(dataset_size * 0.85)
+validation_data_count = dataset_size - training_data_count
+train_dataset, valid_dataset = data.random_split(dataset, [training_data_count, validation_data_count])
 
-print('Train data set:', train_count)
-print('Test data set:', val_count)
+print('Training dataset :', training_data_count)
+print('Test dataset', validation_data_count)
+
+#Getting class sample counts
 
 y_train_indices = train_dataset.indices
 
@@ -48,7 +58,9 @@ y_train = [dataset.targets[i] for i in y_train_indices]
 
 class_sample_count = np.array(
     [len(np.where(y_train == t)[0]) for t in np.unique(y_train)])
-    
+
+#Calculating weights
+
 weight = 1. / class_sample_count
 samples_weight = np.array([weight[t] for t in y_train])
 samples_weight = torch.from_numpy(samples_weight)
@@ -56,18 +68,21 @@ samples_weight = torch.from_numpy(samples_weight)
 print("Class sample count: ", class_sample_count)
 print("Weight: ", weight)
 
+#Defining sampler
 sampler = torch.utils.data.sampler.WeightedRandomSampler(samples_weight.type('torch.DoubleTensor'), len(samples_weight))
 
+#Loading train and validation dataset (train dataset is loaded with sampler)
 train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=32, sampler=sampler)
 valid_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=32)
 
-print('Train data set:', train_count)
-print('Test data set:', val_count)
-print('Length of dataloader:', len(train_dataloader))
+print('Training dataset:', training_data_count)
+print('Test dataset:', validation_data_count)
+
+#Model definition
 
 class ConvNeuralNet(nn.Module):
  
-    def __init__(self, num_classes):
+    def __init__(self, number_class):
         super(ConvNeuralNet, self).__init__()
         self.conv_layer1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3)
         self.conv_layer2 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3)
@@ -79,7 +94,7 @@ class ConvNeuralNet(nn.Module):
         
         self.fc1 = nn.Linear(5184, 128)
         self.relu1 = nn.ReLU()
-        self.fc2 = nn.Linear(128, num_classes)
+        self.fc2 = nn.Linear(128, number_class)
     
    
     def forward(self, x):
@@ -97,8 +112,11 @@ class ConvNeuralNet(nn.Module):
         out = self.relu1(out)
         out = self.fc2(out)
         return out
-        
-model = ConvNeuralNet(num_classes)
+
+#Parameter definition for model
+
+model = ConvNeuralNet(number_class)
+
 
 criterion = nn.CrossEntropyLoss()
 
@@ -107,6 +125,7 @@ optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay =
 
 total_step = len(train_dataloader)
 
+#Training and loss calculation
 
 loss_list=[]
 for epoch in range(20):
@@ -130,6 +149,7 @@ for epoch in range(20):
 
     print('Epoch [{}/{}], Loss: {:.4f}'.format(epoch+1, 20, loss.item()))
 
+#Train accuracy calculation
 
 train_accuracy =[]
 with torch.no_grad():
@@ -148,8 +168,9 @@ with torch.no_grad():
     
     print('Accuracy train total : {} %'.format(100 * correct / total))
 
+#test accuracy calculation
 
- test_accuracy = []
+test_accuracy = []
 with torch.no_grad():
     correct = 0
     total = 0
@@ -165,14 +186,15 @@ with torch.no_grad():
         test_accuracy.append(100 * correct / total)
     
     print('Accuracy test  total : {} %'.format(100 * correct / total))
-    
 
+
+#Plotting loss
 
 epochs = range(1, len(loss_list) + 1)
 
 plt.plot(epochs, loss_list, color='r', label='Loss')
 plt.title('Training Loss')
-plt.ylabel('Accuracy')
+plt.ylabel('Loss')
 plt.xlabel('Epoch')
 plt.legend()
 
