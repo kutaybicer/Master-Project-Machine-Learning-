@@ -16,14 +16,24 @@ import cv2
 from google.cloud import storage
 from PIL import Image
 
+tf.test.gpu_device_name()
+tf.test.is_gpu_available()
+
+#Defining environment for cloud
 
 os.environ['GOOGLE_APPlICATION_CREDENTIALS'] = 'C:\Project\project-358014-1ab403deb150.json'
 
+#Creating storage client
+
 storage_client = storage.Client()
+
+#Creating bucket in the cloud for storage
 
 # bucket_name = 'ganimages'
 # bucket = storage_client.bucket(bucket_name)
 # bucket.create(location='EU')
+
+#Upload function for cloud
 
 def upload_cloud(blob_name, path, bucket_name):
     try:
@@ -34,8 +44,10 @@ def upload_cloud(blob_name, path, bucket_name):
     except Exception as e:
         print(e)
         return False
-        
- def download_cloud(blob_name, path, bucket_name):
+
+#Download function for cloud
+
+def download_cloud(blob_name, path, bucket_name):
     try:
         bucket =storage_client.get_bucket(bucket_name)
         blob = bucket.blob(blob_name)
@@ -45,271 +57,241 @@ def upload_cloud(blob_name, path, bucket_name):
     except Exception as e:
         print(e)
         return False
-        
-        
-        
- 
+
+#Getting image paths
 ImgLocation="C:/Project/data3333/"
 
-
 CATEGORIES = set(["malignant_all"])
-
 
 ImagePaths=[]
 for category in CATEGORIES:
     for image in list(os.listdir(ImgLocation+category)):
         ImagePaths=ImagePaths+[ImgLocation+category+"/"+image]
         
+#Loading images and preprocessing
 
-data_lowres=[]
+data_loaded=[]
 for img in ImagePaths:
     image = cv2.imread(img)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     image_lowres = cv2.resize(image, (64, 64))
-    data_lowres.append(image_lowres)
+    data_loaded.append(image_lowres)
     
+#Converting images to numpy array
+data_loaded = np.array(data_loaded, dtype="float32") / 255.0
 
-data_lowres = np.array(data_lowres, dtype="float32") / 255.0
+print("Shape of data_loaded: ", data_loaded.shape)
 
-
+#Displaying some of the data
 
 fig, axs = plt.subplots(2, 5, sharey=False, tight_layout=True, figsize=(16,9), facecolor='white')
 n=0
 for i in range(0,2):
     for j in range(0,5):
-        axs[i,j].matshow(data_lowres[n])
+        axs[i,j].matshow(data_loaded[n])
         n=n+1
 plt.show() 
 
-
-
+#Setting up scaler between -1,1
 scaler=MinMaxScaler(feature_range=(-1, 1))
 
-
-data=data_lowres.copy()
+data=data_loaded.copy()
 print("Original shape of the data: ", data.shape)
 
-
+#Reshaping data
 data=data.reshape(-1, 1)
 print("Reshaped data: ", data.shape)
 
-
+#Fitting scaler
 scaler.fit(data)
 
-
+#Scaling data
 data=scaler.transform(data)
 
-
-data=data.reshape(data_lowres.shape[0], 64, 64, 3)
+#Reshaping to original shape
+data=data.reshape(data_loaded.shape[0], 64, 64, 3)
 print("Shape of the scaled array: ", data.shape)
 
-print("Shape of data_lowres: ", data_lowres.shape)
-
-
+#generator model
 
 def generator(latent_dim):
-    model = Sequential(name="Generator") # Model
+    model = Sequential(name="Generator")
     
     
-    n_nodes = 8 * 8 * 128 # number of nodes in the first hidden layer
-    model.add(Dense(n_nodes, input_dim=latent_dim, name='Generator-Hidden-Layer-1'))
-    model.add(Reshape((8, 8, 128), name='Generator-Hidden-Layer-Reshape-1'))
-    
-    
-    model.add(Conv2DTranspose(filters=128, kernel_size=(4,4), strides=(2,2), padding='same', name='Generator-Hidden-Layer-2'))
-    model.add(ReLU(name='Generator-Hidden-Layer-Activation-2'))
+    n_nodes = 8 * 8 * 128 
+    model.add(Dense(n_nodes, input_dim=latent_dim))
+    model.add(Reshape((8, 8, 128)))
+
+    model.add(Conv2DTranspose(filters=128, kernel_size=(4,4), strides=(2,2), padding='same'))
+    model.add(LeakyReLU(alpha=0.3))
+    Dropout(0.3),
                               
+    model.add(Conv2DTranspose(filters=256, kernel_size=(4,4), strides=(2,2), padding='same'))
+    model.add(LeakyReLU(alpha=0.3))
+    Dropout(0.2),
     
-    model.add(Conv2DTranspose(filters=256, kernel_size=(4,4), strides=(2,2), padding='same', name='Generator-Hidden-Layer-3'))
-    model.add(ReLU(name='Generator-Hidden-Layer-Activation-3'))
+    model.add(Conv2DTranspose(filters=512, kernel_size=(4,4), strides=(2,2), padding='same'))
+    model.add(LeakyReLU(alpha=0.3))
+    Dropout(0.1),
     
-    
-    model.add(Conv2DTranspose(filters=512, kernel_size=(4,4), strides=(2,2), padding='same', name='Generator-Hidden-Layer-4'))
-    model.add(ReLU(name='Generator-Hidden-Layer-Activation-4'))
-    
-    
-    model.add(Conv2D(filters=3, kernel_size=(5,5), activation='tanh', padding='same', name='Generator-Output-Layer'))
+    model.add(Conv2D(filters=3, kernel_size=(5,5), activation='tanh', padding='same'))
     return model
 
-
-latent_dim=100 # Our latent space has 100 dimensions. We can change it to any number
+latent_dim=100 
 gen_model = generator(latent_dim)
 
-
-
+#discriminator model
 
 def discriminator(in_shape=(64,64,3)):
-    model = Sequential(name="Discriminator") # Model
+    model = Sequential(name="Discriminator") 
     
+    model.add(Conv2D(filters=64, kernel_size=(4,4), strides=(2, 2), padding='same', input_shape=in_shape))
+    model.add(LeakyReLU(alpha=0.2))
     
-    model.add(Conv2D(filters=64, kernel_size=(4,4), strides=(2, 2), padding='same', input_shape=in_shape, name='Discriminator-Hidden-Layer-1'))
-    model.add(LeakyReLU(alpha=0.2, name='Discriminator-Hidden-Layer-Activation-1'))
+    model.add(Conv2D(filters=128, kernel_size=(4,4), strides=(2, 2), padding='same', input_shape=in_shape))
+    model.add(LeakyReLU(alpha=0.2))
     
+    model.add(Conv2D(filters=128, kernel_size=(4,4), strides=(2, 2), padding='same', input_shape=in_shape))
+    model.add(LeakyReLU(alpha=0.2))
     
-    model.add(Conv2D(filters=128, kernel_size=(4,4), strides=(2, 2), padding='same', input_shape=in_shape, name='Discriminator-Hidden-Layer-2'))
-    model.add(LeakyReLU(alpha=0.2, name='Discriminator-Hidden-Layer-Activation-2'))
-    
-    
-    model.add(Conv2D(filters=128, kernel_size=(4,4), strides=(2, 2), padding='same', input_shape=in_shape, name='Discriminator-Hidden-Layer-3'))
-    model.add(LeakyReLU(alpha=0.2, name='Discriminator-Hidden-Layer-Activation-3'))
-    
-    
-    model.add(Flatten(name='Discriminator-Flatten-Layer')) # Flatten the shape
-    model.add(Dropout(0.3, name='Discriminator-Flatten-Layer-Dropout')) # Randomly drop some connections for better generalization
-    model.add(Dense(1, activation='sigmoid', name='Discriminator-Output-Layer')) # Output Layer
-    
+    model.add(Flatten())
+    model.add(Dropout(0.3))
+    model.add(Dense(1, activation='sigmoid'))
     
     model.compile(loss='binary_crossentropy', optimizer=Adam(learning_rate=0.0001, beta_1=0.5), metrics=['accuracy'])
     return model
 
-
 dis_model = discriminator()
 
 
+#GAN model with both generator and discriminator
 
 def def_gan(generator, discriminator):
     
-    
+    #Since we want to train the discriminator and generator differently, we deactivate the discriminator at first.
     discriminator.trainable = False
     
-    
-    model = Sequential(name="DCGAN") # GAN Model
-    model.add(generator) # Add Generator
-    model.add(discriminator) # Add Disriminator
-    
+    #Adding generator and discriminator to the model
+    model = Sequential(name="DCGAN")
+    model.add(generator)
+    model.add(discriminator)
     
     model.compile(loss='binary_crossentropy', optimizer=Adam(learning_rate=0.0001, beta_1=0.5))
     return model
 
-
 gan_model = def_gan(gen_model, dis_model)
 
-
-
+#Getting real images and labelling
 
 def real_samples(n, dataset):
     
-   
+    # Real images
+    
     X = dataset[np.random.choice(dataset.shape[0], n, replace=True), :]
 
-   
+    #Labelling classes
+    
     y = np.ones((n, 1))
     return X, y
     
     
 def latent_vector(latent_dim, n):
     
-    
+    # Generating points in the latent dimension
     latent_input = np.random.randn(latent_dim * n)
     
-    
+    # Reshaping inputs
     latent_input = latent_input.reshape(n, latent_dim)
     return latent_input
   
-    
+#Fake sample generate function
+
 def fake_samples(generator, latent_dim, n):
     
-    
+    # Generating points in the latent dimension
     latent_output = latent_vector(latent_dim, n)
     
-    
+    # Generating synthetic images
     X = generator.predict(latent_output)
     
-   
+    # Labeling synthetic samples
     y = np.zeros((n, 1))
     return X, y    
-    
+
+# Result analysis
 def performance_summary(generator, discriminator, dataset, latent_dim, n=100):
     
-   
+
     x_real, y_real = real_samples(n, dataset)
-    
+
     _, real_accuracy = discriminator.evaluate(x_real, y_real, verbose=0)
     
-   
     x_fake, y_fake = fake_samples(generator, latent_dim, n)
-    
+
     _, fake_accuracy = discriminator.evaluate(x_fake, y_fake, verbose=0)
     
-    
-    print("*** Evaluation ***")
     print("Discriminator Accuracy on REAL images: ", real_accuracy)
     print("Discriminator Accuracy on FAKE (generated) images: ", fake_accuracy)
     
-    
-    x_fake_inv_trans=x_fake.reshape(-1, 1)
-    x_fake_inv_trans=scaler.inverse_transform(x_fake_inv_trans)
-    x_fake_inv_trans=x_fake_inv_trans.reshape(n, 64, 64, 3)
+    # Displaying synthetic images
+    x_fake_transform=x_fake.reshape(-1, 1)
+    x_fake_transform=scaler.inverse_transform(x_fake_transform)
+    x_fake_transform=x_fake_transform.reshape(n, 64, 64, 3)
     
     fig, axs = plt.subplots(2, 3, sharey=False, tight_layout=True, figsize=(12,6), facecolor='white')
     k=0
     for i in range(0,2):
         for j in range(0,3):
-            axs[i,j].matshow(x_fake_inv_trans[k])
+            axs[i,j].matshow(x_fake_transform[k])
             k=k+1
     plt.show() 
-    
-
 
 def train(g_model, d_model, gan_model, dataset, latent_dim, n_epochs=10001, n_batch=32, n_eval=500):
     
-    
     half_batch = int(n_batch / 2)
-    
-    
+     
     for i in range(n_epochs):
     
-    
-        
+    # Discriminator training
         x_real, y_real = real_samples(half_batch, dataset)
-        
         x_fake, y_fake = fake_samples(g_model, latent_dim, half_batch)
-        
         
         X, y = np.vstack((x_real, x_fake)), np.vstack((y_real, y_fake))
         discriminator_loss, _ = d_model.train_on_batch(X, y)
     
-    
-        
+    # Generator training
         x_gan = latent_vector(latent_dim, n_batch)
-                        
+        
         y_gan = np.ones((n_batch, 1))
-                
+        
         generator_loss = gan_model.train_on_batch(x_gan, y_gan)
         
         if (i) % n_eval == 0:
             print("Epoch number: ", i)
-            print("*** Training ***")
             print("Discriminator Loss ", discriminator_loss)
             print("Generator Loss: ", generator_loss)
             performance_summary(g_model, d_model, dataset, latent_dim)
-            
-            
+
+#training
 train(gen_model, dis_model, gan_model, data, latent_dim)
 
-
-number=3000
+#generating 50000 synthetic data
+number=50000
 xfake, yfake = fake_samples(gen_model, 100, number)
-xfake_inv_trans=xfake.reshape(-1, 1)
-xfake_inv_trans=scaler.inverse_transform(xfake_inv_trans)
-xfake_inv_trans=xfake_inv_trans.reshape(number, 64, 64, 3)
+xfake_transform=xfake.reshape(-1, 1)
+xfake_transform=scaler.inverse_transform(xfake_transform)
+xfake_transform=xfake_transform.reshape(number, 64, 64, 3)
 
 
 k=0
-
-for i in range(0,len(xfake_inv_trans)):
-    plt.imshow(xfake_inv_trans[k])
-    plt.imsave("C:\Project\generation\malignant\%d.png"%k, xfake_inv_trans[k])
+#z=25000 #(Data generation is divided into 25000 and 25000 due to lack of memory.The z variable is used for the second part.)
+for i in range(0,len(xfake_transform)):
+    plt.imsave("C:\Project\saved3\malignant\%d.png"%k, xfake_transform[k])
     k=k+1
-    
-# path = r'C:\Project\generated'
-# c=0
-# for c in range (0, 10):
-#     upload_cloud('%d'%c,os.path.join(path, '%d.png'%c), 'ganimages')
+    #z=z+1
 
-
-
-# path = r'C:\Project\saved\synthetic'
-# a = 0
-# for a in range (0,10):
-#     download_cloud('%d'%a, os.path.join(path,'%d.png'%a),'ganimages')
+#Uploading sythetic images to cloud
+path = r'C:\Project\saved3\malignant'
+c=0
+for c in range (0, 10):
+    upload_cloud('%d'%c,os.path.join(path, '%d.png'%c), 'ganimages')
